@@ -15,6 +15,22 @@ internal sealed class AppSettings
     public string LaunchMode { get; set; } = "new-display"; // new-display | display-id
     public string LastSerial { get; set; } = "";
 
+    // Keyboard: uhid | aoa | sdk
+    public string KeyboardMode { get; set; } = "uhid";
+    public bool SdkRawKeyEvents { get; set; }
+    public bool SdkPreferText { get; set; }
+    public bool NoKeyRepeat { get; set; }
+
+    // Mouse: uhid | aoa | sdk
+    public string MouseMode { get; set; } = "uhid";
+    /// <summary>1–10；scrcpy 无直接灵敏度时，映射为 DPI 微调（相对基准 DPI）。</summary>
+    public int MouseSensitivity { get; set; } = 5;
+
+    // Wireless ADB
+    public string WirelessHost { get; set; } = "";
+    public string WirelessPort { get; set; } = "5555";
+    public string PairPort { get; set; } = "";
+
     private static string SettingsPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CnDeX", "settings.json");
 

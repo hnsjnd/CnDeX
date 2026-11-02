@@ -124,12 +124,48 @@ internal static class AdbService
         return list;
     }
 
+    /// <summary>
+    /// Android 11+ wireless debugging: adb pair IP:PAIR_PORT CODE
+    /// </summary>
+    public static async Task<(bool Ok, string Output)> PairAsync(string adbPath, string hostPort, string pairingCode)
+    {
+        var code = pairingCode.Trim().Replace(" ", "");
+        var output = await RunAsync(adbPath, $"pair {Quote(hostPort)} {Quote(code)}", timeoutMs: 60000).ConfigureAwait(false);
+        var ok = output.Contains("Successfully paired", StringComparison.OrdinalIgnoreCase)
+                 || output.Contains("成功", StringComparison.Ordinal);
+        return (ok, output.Trim());
+    }
+
+    /// <summary>
+    /// adb connect IP:PORT
+    /// </summary>
+    public static async Task<(bool Ok, string Output)> ConnectAsync(string adbPath, string hostPort)
+    {
+        var output = await RunAsync(adbPath, $"connect {Quote(hostPort)}", timeoutMs: 30000).ConfigureAwait(false);
+        var ok = output.Contains("connected to", StringComparison.OrdinalIgnoreCase)
+                 || output.Contains("already connected", StringComparison.OrdinalIgnoreCase);
+        return (ok, output.Trim());
+    }
+
+    public static async Task<string> DisconnectAsync(string adbPath, string? hostPort = null)
+    {
+        var args = string.IsNullOrWhiteSpace(hostPort) ? "disconnect" : $"disconnect {Quote(hostPort)}";
+        return (await RunAsync(adbPath, args, timeoutMs: 15000).ConfigureAwait(false)).Trim();
+    }
+
+    private static string Quote(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "\"\"";
+        if (value.Contains('"') || value.Contains(' ') || value.Contains('&'))
+            return "\"" + value.Replace("\"", "\\\"") + "\"";
+        return value;
+    }
+
     public static async Task<IReadOnlyList<DisplayInfo>> ListDisplaysAsync(string adbPath, string serial)
     {
         var output = await RunAsync(adbPath, $"-s \"{serial}\" shell dumpsys display").ConfigureAwait(false);
         var displays = new Dictionary<int, DisplayInfo>();
 
-        // Prefer DisplayDevice / uniqueId blocks when present
         var idMatches = Regex.Matches(output, @"mDisplayId\s*=\s*(\d+)");
         foreach (Match m in idMatches)
         {
@@ -139,7 +175,6 @@ internal static class AdbService
             }
         }
 
-        // Enrich with names / uniqueIds near DisplayDevice sections
         var blocks = Regex.Matches(
             output,
             @"DisplayDeviceInfo\{[^}]*name=(?<name>[^,\}]+)[^}]*uniqueId=(?<uid>[^,\}]+)[^}]*displayId=(?<id>\d+)",
@@ -157,7 +192,6 @@ internal static class AdbService
             };
         }
 
-        // Alternate pattern: "Display id <n>:" headers
         foreach (Match m in Regex.Matches(output, @"Display id\s+(\d+):", RegexOptions.IgnoreCase))
         {
             if (int.TryParse(m.Groups[1].Value, out var id) && !displays.ContainsKey(id))
@@ -189,9 +223,32 @@ internal static class AdbService
         if (named != null)
             return named.Id;
 
-        // Fallback: highest non-zero display id (common when DeX just appeared)
         var other = list.Where(d => d.Id != 0).OrderByDescending(d => d.Id).FirstOrDefault();
         return other?.Id;
+    }
+
+    /// <summary>
+    /// Map sensitivity 1–10 onto a DPI for --new-display.
+    /// Lower sensitivity → higher DPI (UI denser / pointer travels farther on screen).
+    /// Higher sensitivity → lower DPI (UI larger / less travel for same mouse move with UHID).
+    /// When baseDpi is set, scale around it; otherwise use absolute presets.
+    /// </summary>
+    public static int SensitivityToDpi(int sensitivity, int? baseDpi = null)
+    {
+        var s = Math.Clamp(sensitivity, 1, 10);
+        // Presets: 1=慢( denser / smaller pointer travel feel) … 10=快
+        // With UHID, Android pointer speed + display DPI affect perceived speed.
+        // Approximation: lower DPI → larger UI elements → same physical mouse move covers less "content".
+        // User expectation: higher slider = faster → lower DPI.
+        int[] presets = { 400, 360, 320, 284, 240, 220, 200, 180, 160, 140 };
+        var fromPreset = presets[s - 1];
+        if (baseDpi is null or <= 0)
+            return fromPreset;
+
+        // Scale relative to user base: sensitivity 5 = base, each step ±8%
+        var factor = 1.0 + (5 - s) * 0.08;
+        var dpi = (int)Math.Round(baseDpi.Value * factor);
+        return Math.Clamp(dpi, 120, 480);
     }
 
     public static async Task<string> RunAsync(string exePath, string args, int timeoutMs = 20000)

@@ -28,6 +28,28 @@ public sealed class MainForm : Form
     private readonly Button _btnStop = new();
     private readonly Label _lblStatus = new();
 
+    // Wireless
+    private readonly TextBox _txtWifiHost = new();
+    private readonly TextBox _txtWifiPort = new();
+    private readonly TextBox _txtPairPort = new();
+    private readonly TextBox _txtPairCode = new();
+    private readonly Button _btnPair = new();
+    private readonly Button _btnConnect = new();
+    private readonly Button _btnDisconnect = new();
+
+    // Keyboard / mouse
+    private readonly ComboBox _cmbKeyboard = new();
+    private readonly ComboBox _cmbMouse = new();
+    private readonly CheckBox _chkRawKeys = new();
+    private readonly CheckBox _chkPreferText = new();
+    private readonly CheckBox _chkNoKeyRepeat = new();
+    private readonly TrackBar _trkSensitivity = new();
+    private readonly Label _lblSensitivity = new();
+    private readonly CheckBox _chkApplySensToDpi = new();
+    private readonly Button _btnDpiSlow = new();
+    private readonly Button _btnDpiNormal = new();
+    private readonly Button _btnDpiFast = new();
+
     private Process? _scrcpyProcess;
     private bool _busy;
 
@@ -37,13 +59,15 @@ public sealed class MainForm : Form
         Text = "CnDeX — 三星 DeX 简易客户端";
         Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(560, 520);
-        ClientSize = new Size(640, 560);
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
+        MinimumSize = new Size(640, 700);
+        ClientSize = new Size(700, 780);
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
+        AutoScroll = true;
 
         BuildUi();
         LoadSettingsToUi();
+        UpdateKeyboardOptionEnabled();
         FormClosing += OnFormClosing;
         Shown += async (_, _) =>
         {
@@ -58,18 +82,19 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 6,
+            RowCount = 8,
             Padding = new Padding(12),
             AutoSize = false
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // title
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // paths
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // wireless
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // device
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // input
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // buttons
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // log
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // footer
 
-        // Title
         var title = new Label
         {
             Text = "通过 scrcpy + adb 启动三星 DeX 虚拟桌面（简体中文原版界面）",
@@ -79,7 +104,63 @@ public sealed class MainForm : Form
         };
         root.Controls.Add(title, 0, 0);
 
-        // Paths
+        root.Controls.Add(BuildPathGroup(), 0, 1);
+        root.Controls.Add(BuildWirelessGroup(), 0, 2);
+        root.Controls.Add(BuildDeviceGroup(), 0, 3);
+        root.Controls.Add(BuildInputGroup(), 0, 4);
+
+        var btnPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            Margin = new Padding(0, 0, 0, 8)
+        };
+        _btnStart.Text = "启动 DeX";
+        _btnStart.Width = 120;
+        _btnStart.Height = 36;
+        _btnStart.Click += async (_, _) => await StartDexAsync();
+        _btnStop.Text = "停止";
+        _btnStop.Width = 100;
+        _btnStop.Height = 36;
+        _btnStop.Enabled = false;
+        _btnStop.Click += (_, _) => StopDex();
+        btnPanel.Controls.Add(_btnStart);
+        btnPanel.Controls.Add(_btnStop);
+        _lblStatus.Text = "就绪";
+        _lblStatus.AutoSize = true;
+        _lblStatus.Margin = new Padding(16, 10, 0, 0);
+        btnPanel.Controls.Add(_lblStatus);
+        root.Controls.Add(btnPanel, 0, 5);
+
+        var logGroup = new GroupBox
+        {
+            Text = "日志",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(8)
+        };
+        _txtLog.Multiline = true;
+        _txtLog.ReadOnly = true;
+        _txtLog.ScrollBars = ScrollBars.Vertical;
+        _txtLog.Dock = DockStyle.Fill;
+        _txtLog.Font = new Font("Consolas", 9F);
+        logGroup.Controls.Add(_txtLog);
+        root.Controls.Add(logGroup, 0, 6);
+
+        var footer = new Label
+        {
+            Text = "需要：三星 DeX 机型 + 官方 scrcpy（建议 ≥ 3.0，键盘/鼠标 uhid 推荐 5.x）+ USB/无线调试。本程序不附带 scrcpy/adb。",
+            AutoSize = true,
+            ForeColor = Color.DimGray,
+            Margin = new Padding(0, 6, 0, 0)
+        };
+        root.Controls.Add(footer, 0, 7);
+
+        Controls.Add(root);
+    }
+
+    private Control BuildPathGroup()
+    {
         var pathGroup = new GroupBox
         {
             Text = "工具路径",
@@ -132,9 +213,99 @@ public sealed class MainForm : Form
         pathStack.Controls.Add(pathTable);
         pathStack.Controls.Add(hint);
         pathGroup.Controls.Add(pathStack);
-        root.Controls.Add(pathGroup, 0, 1);
+        return pathGroup;
+    }
 
-        // Device + params
+    private Control BuildWirelessGroup()
+    {
+        var group = new GroupBox
+        {
+            Text = "无线调试（adb pair / connect）",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(8),
+            Margin = new Padding(0, 0, 0, 8)
+        };
+
+        var table = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            ColumnCount = 6,
+            RowCount = 2,
+            AutoSize = true
+        };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
+
+        table.Controls.Add(new Label { Text = "手机 IP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        _txtWifiHost.Dock = DockStyle.Fill;
+        _txtWifiHost.PlaceholderText = "例如 192.168.1.8";
+        table.Controls.Add(_txtWifiHost, 1, 0);
+        table.Controls.Add(new Label { Text = "连接端口", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 0);
+        _txtWifiPort.Dock = DockStyle.Fill;
+        _txtWifiPort.PlaceholderText = "5555";
+        table.Controls.Add(_txtWifiPort, 3, 0);
+        table.Controls.Add(new Label { Text = "配对端口", AutoSize = true, Anchor = AnchorStyles.Left }, 4, 0);
+        _txtPairPort.Dock = DockStyle.Fill;
+        _txtPairPort.PlaceholderText = "无线调试页显示";
+        table.Controls.Add(_txtPairPort, 5, 0);
+
+        table.Controls.Add(new Label { Text = "配对码", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        _txtPairCode.Dock = DockStyle.Fill;
+        _txtPairCode.PlaceholderText = "六位数字";
+        table.SetColumnSpan(_txtPairCode, 2);
+        table.Controls.Add(_txtPairCode, 1, 1);
+
+        var btns = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            WrapContents = false
+        };
+        _btnPair.Text = "配对";
+        _btnPair.Width = 72;
+        _btnPair.Click += async (_, _) => await WirelessPairAsync();
+        _btnConnect.Text = "连接";
+        _btnConnect.Width = 72;
+        _btnConnect.Click += async (_, _) => await WirelessConnectAsync();
+        _btnDisconnect.Text = "断开无线";
+        _btnDisconnect.Width = 88;
+        _btnDisconnect.Click += async (_, _) => await WirelessDisconnectAsync();
+        btns.Controls.Add(_btnPair);
+        btns.Controls.Add(_btnConnect);
+        btns.Controls.Add(_btnDisconnect);
+        table.SetColumnSpan(btns, 3);
+        table.Controls.Add(btns, 3, 1);
+
+        var hint = new Label
+        {
+            Text = "步骤：开发者选项 → 无线调试 → 使用配对码配对（填 IP+配对端口+配对码）→ 再填连接端口点「连接」→ 刷新设备。",
+            AutoSize = true,
+            ForeColor = Color.DimGray,
+            Margin = new Padding(0, 6, 0, 0),
+            MaximumSize = new Size(660, 0)
+        };
+
+        var stack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            WrapContents = false
+        };
+        stack.Controls.Add(table);
+        stack.Controls.Add(hint);
+        group.Controls.Add(stack);
+        return group;
+    }
+
+    private Control BuildDeviceGroup()
+    {
         var mid = new GroupBox
         {
             Text = "设备与参数",
@@ -208,58 +379,159 @@ public sealed class MainForm : Form
         midStack.Controls.Add(midTable);
         midStack.Controls.Add(modeRow);
         mid.Controls.Add(midStack);
-        root.Controls.Add(mid, 0, 2);
+        return mid;
+    }
 
-        // Buttons
-        var btnPanel = new FlowLayoutPanel
+    private Control BuildInputGroup()
+    {
+        var group = new GroupBox
         {
+            Text = "键盘与鼠标（DeX 输入）",
             Dock = DockStyle.Top,
-            FlowDirection = FlowDirection.LeftToRight,
             AutoSize = true,
+            Padding = new Padding(8),
             Margin = new Padding(0, 0, 0, 8)
         };
-        _btnStart.Text = "启动 DeX";
-        _btnStart.Width = 120;
-        _btnStart.Height = 36;
-        _btnStart.Click += async (_, _) => await StartDexAsync();
-        _btnStop.Text = "停止";
-        _btnStop.Width = 100;
-        _btnStop.Height = 36;
-        _btnStop.Enabled = false;
-        _btnStop.Click += (_, _) => StopDex();
-        btnPanel.Controls.Add(_btnStart);
-        btnPanel.Controls.Add(_btnStop);
-        _lblStatus.Text = "就绪";
-        _lblStatus.AutoSize = true;
-        _lblStatus.Margin = new Padding(16, 10, 0, 0);
-        btnPanel.Controls.Add(_lblStatus);
-        root.Controls.Add(btnPanel, 0, 3);
 
-        // Log
-        var logGroup = new GroupBox
+        var table = new TableLayoutPanel
         {
-            Text = "日志",
-            Dock = DockStyle.Fill,
-            Padding = new Padding(8)
+            Dock = DockStyle.Top,
+            ColumnCount = 4,
+            RowCount = 3,
+            AutoSize = true
         };
-        _txtLog.Multiline = true;
-        _txtLog.ReadOnly = true;
-        _txtLog.ScrollBars = ScrollBars.Vertical;
-        _txtLog.Dock = DockStyle.Fill;
-        _txtLog.Font = new Font("Consolas", 9F);
-        logGroup.Controls.Add(_txtLog);
-        root.Controls.Add(logGroup, 0, 4);
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
 
-        var footer = new Label
+        table.Controls.Add(new Label { Text = "键盘模式", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        _cmbKeyboard.DropDownStyle = ComboBoxStyle.DropDownList;
+        _cmbKeyboard.Dock = DockStyle.Fill;
+        _cmbKeyboard.Items.AddRange(new object[]
         {
-            Text = "需要：三星 DeX 机型 + 官方 scrcpy（建议 ≥ 3.0）+ USB/无线调试。本程序不附带 scrcpy/adb。",
+            "uhid（推荐，无线/USB，全字符）",
+            "aoa（仅 USB；Windows 镜像时可能失败）",
+            "sdk（兼容模式；可开原始按键）"
+        });
+        _cmbKeyboard.SelectedIndexChanged += (_, _) => UpdateKeyboardOptionEnabled();
+        table.Controls.Add(_cmbKeyboard, 1, 0);
+
+        table.Controls.Add(new Label { Text = "鼠标模式", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 0);
+        _cmbMouse.DropDownStyle = ComboBoxStyle.DropDownList;
+        _cmbMouse.Dock = DockStyle.Fill;
+        _cmbMouse.Items.AddRange(new object[]
+        {
+            "uhid（推荐）",
+            "aoa（仅 USB）",
+            "sdk（绝对坐标）"
+        });
+        table.Controls.Add(_cmbMouse, 3, 0);
+
+        var sdkOpts = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            WrapContents = true
+        };
+        _chkRawKeys.Text = "原始按键 (--raw-key-events)";
+        _chkRawKeys.AutoSize = true;
+        _chkPreferText.Text = "优先文本 (--prefer-text)";
+        _chkPreferText.AutoSize = true;
+        _chkNoKeyRepeat.Text = "禁用按键重复 (--no-key-repeat)";
+        _chkNoKeyRepeat.AutoSize = true;
+        sdkOpts.Controls.Add(_chkRawKeys);
+        sdkOpts.Controls.Add(_chkPreferText);
+        sdkOpts.Controls.Add(_chkNoKeyRepeat);
+        table.SetColumnSpan(sdkOpts, 3);
+        table.Controls.Add(new Label { Text = "SDK 选项", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        table.Controls.Add(sdkOpts, 1, 1);
+
+        table.Controls.Add(new Label { Text = "鼠标灵敏度", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
+        var sensPanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            AutoSize = true,
+            WrapContents = true
+        };
+        _trkSensitivity.Minimum = 1;
+        _trkSensitivity.Maximum = 10;
+        _trkSensitivity.TickFrequency = 1;
+        _trkSensitivity.Width = 160;
+        _trkSensitivity.Height = 36;
+        _trkSensitivity.ValueChanged += (_, _) =>
+        {
+            _lblSensitivity.Text = $"{_trkSensitivity.Value}/10";
+            if (_chkApplySensToDpi.Checked)
+                ApplySensitivityToDpiField();
+        };
+        _lblSensitivity.AutoSize = true;
+        _lblSensitivity.Margin = new Padding(4, 10, 8, 0);
+        _chkApplySensToDpi.Text = "启动时用灵敏度覆盖 DPI";
+        _chkApplySensToDpi.AutoSize = true;
+        _chkApplySensToDpi.Checked = true;
+        _chkApplySensToDpi.Margin = new Padding(4, 8, 8, 0);
+        _btnDpiSlow.Text = "慢";
+        _btnDpiSlow.Width = 40;
+        _btnDpiSlow.Click += (_, _) => { _trkSensitivity.Value = 2; ApplySensitivityToDpiField(); };
+        _btnDpiNormal.Text = "标准";
+        _btnDpiNormal.Width = 48;
+        _btnDpiNormal.Click += (_, _) => { _trkSensitivity.Value = 5; ApplySensitivityToDpiField(); };
+        _btnDpiFast.Text = "快";
+        _btnDpiFast.Width = 40;
+        _btnDpiFast.Click += (_, _) => { _trkSensitivity.Value = 8; ApplySensitivityToDpiField(); };
+        sensPanel.Controls.Add(_trkSensitivity);
+        sensPanel.Controls.Add(_lblSensitivity);
+        sensPanel.Controls.Add(_chkApplySensToDpi);
+        sensPanel.Controls.Add(_btnDpiSlow);
+        sensPanel.Controls.Add(_btnDpiNormal);
+        sensPanel.Controls.Add(_btnDpiFast);
+        table.SetColumnSpan(sensPanel, 3);
+        table.Controls.Add(sensPanel, 1, 2);
+
+        var hint = new Label
+        {
+            Text = "说明：scrcpy 无独立鼠标灵敏度参数。默认 --mouse=uhid / --keyboard=uhid；灵敏度通过 DPI 预设近似。" +
+                   "UHID 失败时可改 aoa（USB）或 sdk。首次 UHID 请在 scrcpy 窗口按 MOD+k 配置实体键盘布局。" +
+                   "Windows 指针速度也可在「设置 → 蓝牙和其他设备 → 鼠标」中调节。",
             AutoSize = true,
             ForeColor = Color.DimGray,
-            Margin = new Padding(0, 6, 0, 0)
+            Margin = new Padding(0, 6, 0, 0),
+            MaximumSize = new Size(660, 0)
         };
-        root.Controls.Add(footer, 0, 5);
 
-        Controls.Add(root);
+        var stack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            WrapContents = false
+        };
+        stack.Controls.Add(table);
+        stack.Controls.Add(hint);
+        group.Controls.Add(stack);
+        return group;
+    }
+
+    private void UpdateKeyboardOptionEnabled()
+    {
+        var sdk = _cmbKeyboard.SelectedIndex == 2;
+        _chkRawKeys.Enabled = sdk;
+        _chkPreferText.Enabled = sdk;
+        // no-key-repeat applies to all modes in practice for games; keep always enabled
+        _chkNoKeyRepeat.Enabled = true;
+    }
+
+    private void ApplySensitivityToDpiField()
+    {
+        int? baseDpi = null;
+        if (int.TryParse(_txtDpi.Text.Trim(), out var parsed) && parsed > 0)
+            baseDpi = parsed;
+        // When applying from presets, use absolute table (ignore current as base once)
+        var dpi = AdbService.SensitivityToDpi(_trkSensitivity.Value, baseDpi: null);
+        _txtDpi.Text = dpi.ToString();
     }
 
     private void LoadSettingsToUi()
@@ -271,6 +543,36 @@ public sealed class MainForm : Form
         _txtBitrate.Text = string.IsNullOrWhiteSpace(_settings.Bitrate) ? "8M" : _settings.Bitrate;
         _txtFps.Text = string.IsNullOrWhiteSpace(_settings.Fps) ? "60" : _settings.Fps;
         _cmbMode.SelectedIndex = string.Equals(_settings.LaunchMode, "display-id", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+        _txtWifiHost.Text = _settings.WirelessHost;
+        _txtWifiPort.Text = string.IsNullOrWhiteSpace(_settings.WirelessPort) ? "5555" : _settings.WirelessPort;
+        _txtPairPort.Text = _settings.PairPort;
+
+        _cmbKeyboard.SelectedIndex = ModeToIndex(_settings.KeyboardMode, "uhid", "aoa", "sdk");
+        _cmbMouse.SelectedIndex = ModeToIndex(_settings.MouseMode, "uhid", "aoa", "sdk");
+        _chkRawKeys.Checked = _settings.SdkRawKeyEvents;
+        _chkPreferText.Checked = _settings.SdkPreferText;
+        _chkNoKeyRepeat.Checked = _settings.NoKeyRepeat;
+        var sens = Math.Clamp(_settings.MouseSensitivity <= 0 ? 5 : _settings.MouseSensitivity, 1, 10);
+        _trkSensitivity.Value = sens;
+        _lblSensitivity.Text = $"{sens}/10";
+    }
+
+    private static int ModeToIndex(string? mode, params string[] modes)
+    {
+        if (string.IsNullOrWhiteSpace(mode)) return 0;
+        for (var i = 0; i < modes.Length; i++)
+        {
+            if (string.Equals(mode, modes[i], StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+        return 0;
+    }
+
+    private static string IndexToMode(int index, params string[] modes)
+    {
+        if (index < 0 || index >= modes.Length) return modes[0];
+        return modes[index];
     }
 
     private void SaveUiToSettings()
@@ -284,6 +586,17 @@ public sealed class MainForm : Form
         _settings.LaunchMode = _cmbMode.SelectedIndex == 1 ? "display-id" : "new-display";
         if (_cmbDevices.SelectedItem is AdbDevice d)
             _settings.LastSerial = d.Serial;
+
+        _settings.WirelessHost = _txtWifiHost.Text.Trim();
+        _settings.WirelessPort = _txtWifiPort.Text.Trim();
+        _settings.PairPort = _txtPairPort.Text.Trim();
+
+        _settings.KeyboardMode = IndexToMode(_cmbKeyboard.SelectedIndex, "uhid", "aoa", "sdk");
+        _settings.MouseMode = IndexToMode(_cmbMouse.SelectedIndex, "uhid", "aoa", "sdk");
+        _settings.SdkRawKeyEvents = _chkRawKeys.Checked;
+        _settings.SdkPreferText = _chkPreferText.Checked;
+        _settings.NoKeyRepeat = _chkNoKeyRepeat.Checked;
+        _settings.MouseSensitivity = _trkSensitivity.Value;
         _settings.Save();
     }
 
@@ -363,6 +676,153 @@ public sealed class MainForm : Form
         _btnStop.Enabled = _scrcpyProcess != null && !_scrcpyProcess.HasExited;
         _btnBrowseScrcpy.Enabled = !busy;
         _btnBrowseAdb.Enabled = !busy;
+        _btnPair.Enabled = !busy;
+        _btnConnect.Enabled = !busy;
+        _btnDisconnect.Enabled = !busy;
+    }
+
+    private string? ResolveAdbOrWarn()
+    {
+        SaveUiToSettings();
+        var adb = AdbService.ResolveAdbPath(_txtAdb.Text.Trim(), _txtScrcpy.Text.Trim());
+        if (adb == null)
+        {
+            Log("未找到 adb。请填写路径，或把 adb.exe 放在 scrcpy 同目录。");
+            SetStatus("未找到 adb");
+            return null;
+        }
+        if (string.IsNullOrWhiteSpace(_txtAdb.Text))
+            _txtAdb.Text = adb;
+        return adb;
+    }
+
+    private string BuildHostPort(string portField)
+    {
+        var host = _txtWifiHost.Text.Trim();
+        var port = portField.Trim();
+        if (string.IsNullOrWhiteSpace(host))
+            throw new InvalidOperationException("请填写手机 IP。");
+        if (string.IsNullOrWhiteSpace(port))
+            throw new InvalidOperationException("请填写端口。");
+        if (host.Contains(':') && !host.StartsWith('['))
+        {
+            // already host:port
+            return host;
+        }
+        return $"{host}:{port}";
+    }
+
+    private async Task WirelessPairAsync()
+    {
+        if (_busy) return;
+        SetBusy(true);
+        try
+        {
+            var adb = ResolveAdbOrWarn();
+            if (adb == null) return;
+
+            var hostPort = BuildHostPort(_txtPairPort.Text);
+            var code = _txtPairCode.Text.Trim();
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                MessageBox.Show(this, "请填写无线调试配对码。", "CnDeX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            Log($"配对中：adb pair {hostPort} …");
+            var (ok, output) = await AdbService.PairAsync(adb, hostPort, code);
+            Log(output);
+            if (ok)
+            {
+                SetStatus("配对成功");
+                Log("配对成功。请确认「连接端口」后点击「连接」。");
+            }
+            else
+            {
+                SetStatus("配对失败");
+                MessageBox.Show(this, "配对失败，请检查 IP、配对端口与配对码。\n\n" + output, "CnDeX",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("配对出错：" + ex.Message);
+            SetStatus("配对失败");
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async Task WirelessConnectAsync()
+    {
+        if (_busy) return;
+        SetBusy(true);
+        try
+        {
+            var adb = ResolveAdbOrWarn();
+            if (adb == null) return;
+
+            var hostPort = BuildHostPort(_txtWifiPort.Text);
+            Log($"连接中：adb connect {hostPort} …");
+            var (ok, output) = await AdbService.ConnectAsync(adb, hostPort);
+            Log(output);
+            if (ok)
+            {
+                SetStatus("已无线连接");
+                await RefreshDevicesAsync();
+            }
+            else
+            {
+                SetStatus("连接失败");
+                MessageBox.Show(this, "连接失败。Android 11+ 需先配对。\n\n" + output, "CnDeX",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("连接出错：" + ex.Message);
+            SetStatus("连接失败");
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async Task WirelessDisconnectAsync()
+    {
+        if (_busy) return;
+        SetBusy(true);
+        try
+        {
+            var adb = ResolveAdbOrWarn();
+            if (adb == null) return;
+
+            string? target = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_txtWifiHost.Text) && !string.IsNullOrWhiteSpace(_txtWifiPort.Text))
+                    target = BuildHostPort(_txtWifiPort.Text);
+            }
+            catch { /* disconnect all */ }
+
+            Log(target == null ? "断开所有无线连接…" : $"断开 {target} …");
+            var output = await AdbService.DisconnectAsync(adb, target);
+            if (!string.IsNullOrWhiteSpace(output))
+                Log(output);
+            await RefreshDevicesAsync();
+            SetStatus("已断开无线");
+        }
+        catch (Exception ex)
+        {
+            Log("断开出错：" + ex.Message);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
     }
 
     private async Task RefreshDevicesAsync()
@@ -371,18 +831,12 @@ public sealed class MainForm : Form
         SetBusy(true);
         try
         {
-            SaveUiToSettings();
-            var adb = AdbService.ResolveAdbPath(_txtAdb.Text.Trim(), _txtScrcpy.Text.Trim());
+            var adb = ResolveAdbOrWarn();
             if (adb == null)
             {
-                Log("未找到 adb。请填写路径，或把 adb.exe 放在 scrcpy 同目录。");
-                SetStatus("未找到 adb");
                 _cmbDevices.DataSource = null;
                 return;
             }
-
-            if (string.IsNullOrWhiteSpace(_txtAdb.Text))
-                _txtAdb.Text = adb;
 
             Log($"正在检测设备… ({adb})");
             var devices = await AdbService.ListDevicesAsync(adb);
@@ -393,7 +847,7 @@ public sealed class MainForm : Form
 
             if (ready.Count == 0)
             {
-                Log("未发现已授权设备。请连接 USB 或确保无线调试已连接，并在手机上允许调试。");
+                Log("未发现已授权设备。请连接 USB，或使用上方无线配对/连接，并在手机上允许调试。");
                 SetStatus("无设备");
             }
             else
@@ -417,6 +871,30 @@ public sealed class MainForm : Form
         {
             SetBusy(false);
         }
+    }
+
+    private string BuildInputFlags()
+    {
+        var kb = IndexToMode(_cmbKeyboard.SelectedIndex, "uhid", "aoa", "sdk");
+        var mouse = IndexToMode(_cmbMouse.SelectedIndex, "uhid", "aoa", "sdk");
+        var parts = new List<string>
+        {
+            $"--keyboard={kb}",
+            $"--mouse={mouse}"
+        };
+
+        if (kb == "sdk")
+        {
+            if (_chkRawKeys.Checked)
+                parts.Add("--raw-key-events");
+            if (_chkPreferText.Checked)
+                parts.Add("--prefer-text");
+        }
+
+        if (_chkNoKeyRepeat.Checked)
+            parts.Add("--no-key-repeat");
+
+        return string.Join(" ", parts);
     }
 
     private async Task StartDexAsync()
@@ -459,9 +937,17 @@ public sealed class MainForm : Form
 
         var resolution = string.IsNullOrWhiteSpace(_txtResolution.Text) ? "1920x1080" : _txtResolution.Text.Trim();
         var dpi = string.IsNullOrWhiteSpace(_txtDpi.Text) ? "240" : _txtDpi.Text.Trim();
+        if (_chkApplySensToDpi.Checked)
+        {
+            dpi = AdbService.SensitivityToDpi(_trkSensitivity.Value, baseDpi: null).ToString();
+            _txtDpi.Text = dpi;
+            Log($"灵敏度 {_trkSensitivity.Value}/10 → DPI {dpi}（scrcpy 无原生灵敏度，用 DPI 近似）");
+        }
+
         var bitrate = string.IsNullOrWhiteSpace(_txtBitrate.Text) ? "8M" : _txtBitrate.Text.Trim();
         var fps = string.IsNullOrWhiteSpace(_txtFps.Text) ? "60" : _txtFps.Text.Trim();
         var useNewDisplay = _cmbMode.SelectedIndex == 0;
+        var inputFlags = BuildInputFlags();
 
         SetBusy(true);
         try
@@ -471,10 +957,9 @@ public sealed class MainForm : Form
             string args;
             if (useNewDisplay)
             {
-                // One UI 8+: DeX can run on scrcpy virtual display
                 args = $"-s \"{device.Serial}\" --new-display={resolution}/{dpi} " +
                        $"--video-bit-rate={bitrate} --max-fps={fps} " +
-                       "--mouse=uhid --keyboard=uhid --window-title=\"CnDeX\"";
+                       $"{inputFlags} --window-title=\"CnDeX\"";
                 Log("启动方式：新建虚拟显示（--new-display）");
             }
             else
@@ -497,8 +982,14 @@ public sealed class MainForm : Form
                 Log($"将附着显示 ID = {id}");
                 args = $"-s \"{device.Serial}\" --display-id={id} " +
                        $"--video-bit-rate={bitrate} --max-fps={fps} " +
-                       "--mouse=uhid --keyboard=uhid --window-title=\"CnDeX\"";
+                       $"{inputFlags} --window-title=\"CnDeX\"";
             }
+
+            Log($"输入：{inputFlags}");
+            if (IndexToMode(_cmbKeyboard.SelectedIndex, "uhid", "aoa", "sdk") == "uhid")
+                Log("提示：UHID 键盘首次使用请在 scrcpy 窗口按 MOD+k（默认 MOD 为 Alt）打开实体键盘布局设置。");
+            if (IndexToMode(_cmbKeyboard.SelectedIndex, "uhid", "aoa", "sdk") == "aoa")
+                Log("提示：AOA 在 Windows 上镜像时可能失败，可改回 uhid 或 sdk。");
 
             Log($"命令：{scrcpy} {args}");
             var psi = new ProcessStartInfo
@@ -546,7 +1037,6 @@ public sealed class MainForm : Form
         }
         finally
         {
-            // Keep busy=false only if process not running; Exited handler manages otherwise
             if (_scrcpyProcess == null || _scrcpyProcess.HasExited)
                 SetBusy(false);
             else
@@ -554,6 +1044,9 @@ public sealed class MainForm : Form
                 _btnRefresh.Enabled = true;
                 _btnBrowseScrcpy.Enabled = true;
                 _btnBrowseAdb.Enabled = true;
+                _btnPair.Enabled = true;
+                _btnConnect.Enabled = true;
+                _btnDisconnect.Enabled = true;
                 _busy = false;
             }
         }
