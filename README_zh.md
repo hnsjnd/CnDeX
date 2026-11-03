@@ -71,6 +71,7 @@ dotnet publish src/CnDeXClient/CnDeXClient.csproj -c Release -r win-x64 \
 
 ## 版本
 
+- **v1.1.1**：界面布局与高 DPI 清晰度修复（防裁切、标签对齐、无线区分行、默认窗口加大）
 - **v1.1.0**：无线配对/连接 UI；键盘模式（uhid/aoa/sdk + SDK 选项）；鼠标模式与灵敏度（DPI 近似）
 - **v1.0.0**：初版启动 DeX / 附着显示
 

@@ -49,6 +49,7 @@ public sealed class MainForm : Form
     private readonly Button _btnDpiSlow = new();
     private readonly Button _btnDpiNormal = new();
     private readonly Button _btnDpiFast = new();
+    private readonly ToolTip _toolTip = new();
 
     private Process? _scrcpyProcess;
     private bool _busy;
@@ -58,9 +59,10 @@ public sealed class MainForm : Form
         _settings = AppSettings.Load();
         Text = "CnDeX — 三星 DeX 简易客户端";
         Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+        AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(640, 700);
-        ClientSize = new Size(700, 780);
+        MinimumSize = new Size(760, 820);
+        ClientSize = new Size(820, 920);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = true;
         AutoScroll = true;
@@ -83,9 +85,10 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 8,
-            Padding = new Padding(12),
+            Padding = new Padding(14),
             AutoSize = false
         };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // title
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // paths
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // wireless
@@ -99,7 +102,7 @@ public sealed class MainForm : Form
         {
             Text = "通过 scrcpy + adb 启动三星 DeX 虚拟桌面（简体中文原版界面）",
             AutoSize = true,
-            Margin = new Padding(0, 0, 0, 8),
+            Margin = new Padding(0, 0, 0, 10),
             ForeColor = Color.FromArgb(30, 30, 30)
         };
         root.Controls.Add(title, 0, 0);
@@ -111,25 +114,26 @@ public sealed class MainForm : Form
 
         var btnPanel = new FlowLayoutPanel
         {
-            Dock = DockStyle.Top,
+            Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             AutoSize = true,
-            Margin = new Padding(0, 0, 0, 8)
+            WrapContents = false,
+            Margin = new Padding(0, 4, 0, 10)
         };
         _btnStart.Text = "启动 DeX";
-        _btnStart.Width = 120;
-        _btnStart.Height = 36;
+        _btnStart.Width = 128;
+        _btnStart.Height = 38;
         _btnStart.Click += async (_, _) => await StartDexAsync();
         _btnStop.Text = "停止";
         _btnStop.Width = 100;
-        _btnStop.Height = 36;
+        _btnStop.Height = 38;
         _btnStop.Enabled = false;
         _btnStop.Click += (_, _) => StopDex();
         btnPanel.Controls.Add(_btnStart);
         btnPanel.Controls.Add(_btnStop);
         _lblStatus.Text = "就绪";
         _lblStatus.AutoSize = true;
-        _lblStatus.Margin = new Padding(16, 10, 0, 0);
+        _lblStatus.Margin = new Padding(16, 12, 0, 0);
         btnPanel.Controls.Add(_lblStatus);
         root.Controls.Add(btnPanel, 0, 5);
 
@@ -137,7 +141,8 @@ public sealed class MainForm : Form
         {
             Text = "日志",
             Dock = DockStyle.Fill,
-            Padding = new Padding(8)
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 0, 6)
         };
         _txtLog.Multiline = true;
         _txtLog.ReadOnly = true;
@@ -152,262 +157,248 @@ public sealed class MainForm : Form
             Text = "需要：三星 DeX 机型 + 官方 scrcpy（建议 ≥ 3.0，键盘/鼠标 uhid 推荐 5.x）+ USB/无线调试。本程序不附带 scrcpy/adb。",
             AutoSize = true,
             ForeColor = Color.DimGray,
-            Margin = new Padding(0, 6, 0, 0)
+            Margin = new Padding(0, 6, 0, 0),
+            MaximumSize = new Size(780, 0)
         };
         root.Controls.Add(footer, 0, 7);
 
         Controls.Add(root);
     }
 
+    private static Label MakeFieldLabel(string text) => new()
+    {
+        Text = text,
+        AutoSize = true,
+        Anchor = AnchorStyles.Left,
+        Margin = new Padding(0, 6, 8, 0)
+    };
+
+    private static void StyleFieldControl(Control c)
+    {
+        c.Dock = DockStyle.Fill;
+        c.Margin = new Padding(0, 2, 6, 2);
+        if (c is TextBox or ComboBox)
+            c.MinimumSize = new Size(0, 28);
+    }
+
+    private static Label MakeHint(string text, int maxWidth = 760) => new()
+    {
+        Text = text,
+        AutoSize = true,
+        ForeColor = Color.DimGray,
+        Margin = new Padding(0, 8, 0, 2),
+        MaximumSize = new Size(maxWidth, 0)
+    };
+
+    private static GroupBox MakeGroup(string title) => new()
+    {
+        Text = title,
+        Dock = DockStyle.Fill,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        Padding = new Padding(12, 14, 12, 10),
+        Margin = new Padding(0, 0, 0, 10)
+    };
+
     private Control BuildPathGroup()
     {
-        var pathGroup = new GroupBox
-        {
-            Text = "工具路径",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            Padding = new Padding(8),
-            Margin = new Padding(0, 0, 0, 8)
-        };
+        var pathGroup = MakeGroup("工具路径");
         var pathTable = new TableLayoutPanel
         {
-            Dock = DockStyle.Top,
+            Dock = DockStyle.Fill,
             ColumnCount = 3,
-            RowCount = 2,
+            RowCount = 3,
             AutoSize = true
         };
-        pathTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        pathTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
         pathTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        pathTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        pathTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88));
+        pathTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        pathTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        pathTable.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        pathTable.Controls.Add(new Label { Text = "scrcpy.exe", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        _txtScrcpy.Dock = DockStyle.Fill;
+        pathTable.Controls.Add(MakeFieldLabel("scrcpy.exe"), 0, 0);
+        StyleFieldControl(_txtScrcpy);
         pathTable.Controls.Add(_txtScrcpy, 1, 0);
         _btnBrowseScrcpy.Text = "浏览…";
-        _btnBrowseScrcpy.Dock = DockStyle.Fill;
+        StyleFieldControl(_btnBrowseScrcpy);
         _btnBrowseScrcpy.Click += (_, _) => BrowseFile(_txtScrcpy, "scrcpy.exe|scrcpy.exe|所有文件|*.*");
         pathTable.Controls.Add(_btnBrowseScrcpy, 2, 0);
 
-        pathTable.Controls.Add(new Label { Text = "adb（可选）", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-        _txtAdb.Dock = DockStyle.Fill;
+        pathTable.Controls.Add(MakeFieldLabel("adb（可选）"), 0, 1);
+        StyleFieldControl(_txtAdb);
         pathTable.Controls.Add(_txtAdb, 1, 1);
         _btnBrowseAdb.Text = "浏览…";
-        _btnBrowseAdb.Dock = DockStyle.Fill;
+        StyleFieldControl(_btnBrowseAdb);
         _btnBrowseAdb.Click += (_, _) => BrowseFile(_txtAdb, "adb.exe|adb.exe|所有文件|*.*");
         pathTable.Controls.Add(_btnBrowseAdb, 2, 1);
 
-        var hint = new Label
-        {
-            Text = "提示：若未填 adb，将自动使用 scrcpy 同目录下的 adb.exe，或系统 PATH 中的 adb。",
-            AutoSize = true,
-            ForeColor = Color.DimGray,
-            Margin = new Padding(0, 6, 0, 0)
-        };
-        var pathStack = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            FlowDirection = FlowDirection.TopDown,
-            AutoSize = true,
-            WrapContents = false
-        };
-        pathStack.Controls.Add(pathTable);
-        pathStack.Controls.Add(hint);
-        pathGroup.Controls.Add(pathStack);
+        var hint = MakeHint("提示：若未填 adb，将自动使用 scrcpy 同目录下的 adb.exe，或系统 PATH 中的 adb。");
+        pathTable.SetColumnSpan(hint, 3);
+        pathTable.Controls.Add(hint, 0, 2);
+
+        pathGroup.Controls.Add(pathTable);
         return pathGroup;
     }
 
     private Control BuildWirelessGroup()
     {
-        var group = new GroupBox
-        {
-            Text = "无线调试（adb pair / connect）",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            Padding = new Padding(8),
-            Margin = new Padding(0, 0, 0, 8)
-        };
+        var group = MakeGroup("无线调试（adb pair / connect）");
 
         var table = new TableLayoutPanel
         {
-            Dock = DockStyle.Top,
-            ColumnCount = 6,
-            RowCount = 2,
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 4,
             AutoSize = true
         };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
+        // 2×2 labeled fields: IP / connect port / pair port / pair code
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        table.Controls.Add(new Label { Text = "手机 IP", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        _txtWifiHost.Dock = DockStyle.Fill;
+        table.Controls.Add(MakeFieldLabel("手机 IP"), 0, 0);
+        StyleFieldControl(_txtWifiHost);
         _txtWifiHost.PlaceholderText = "例如 192.168.1.8";
         table.Controls.Add(_txtWifiHost, 1, 0);
-        table.Controls.Add(new Label { Text = "连接端口", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 0);
-        _txtWifiPort.Dock = DockStyle.Fill;
+
+        table.Controls.Add(MakeFieldLabel("连接端口"), 2, 0);
+        StyleFieldControl(_txtWifiPort);
         _txtWifiPort.PlaceholderText = "5555";
         table.Controls.Add(_txtWifiPort, 3, 0);
-        table.Controls.Add(new Label { Text = "配对端口", AutoSize = true, Anchor = AnchorStyles.Left }, 4, 0);
-        _txtPairPort.Dock = DockStyle.Fill;
-        _txtPairPort.PlaceholderText = "无线调试页显示";
-        table.Controls.Add(_txtPairPort, 5, 0);
 
-        table.Controls.Add(new Label { Text = "配对码", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-        _txtPairCode.Dock = DockStyle.Fill;
+        table.Controls.Add(MakeFieldLabel("配对端口"), 0, 1);
+        StyleFieldControl(_txtPairPort);
+        _txtPairPort.PlaceholderText = "无线调试页显示";
+        table.Controls.Add(_txtPairPort, 1, 1);
+
+        table.Controls.Add(MakeFieldLabel("配对码"), 2, 1);
+        StyleFieldControl(_txtPairCode);
         _txtPairCode.PlaceholderText = "六位数字";
-        table.SetColumnSpan(_txtPairCode, 2);
-        table.Controls.Add(_txtPairCode, 1, 1);
+        table.Controls.Add(_txtPairCode, 3, 1);
 
         var btns = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             AutoSize = true,
-            WrapContents = false
+            WrapContents = false,
+            Margin = new Padding(0, 4, 0, 0)
         };
         _btnPair.Text = "配对";
-        _btnPair.Width = 72;
+        _btnPair.Width = 88;
+        _btnPair.Height = 30;
         _btnPair.Click += async (_, _) => await WirelessPairAsync();
         _btnConnect.Text = "连接";
-        _btnConnect.Width = 72;
+        _btnConnect.Width = 88;
+        _btnConnect.Height = 30;
         _btnConnect.Click += async (_, _) => await WirelessConnectAsync();
         _btnDisconnect.Text = "断开无线";
-        _btnDisconnect.Width = 88;
+        _btnDisconnect.Width = 100;
+        _btnDisconnect.Height = 30;
         _btnDisconnect.Click += async (_, _) => await WirelessDisconnectAsync();
         btns.Controls.Add(_btnPair);
         btns.Controls.Add(_btnConnect);
         btns.Controls.Add(_btnDisconnect);
-        table.SetColumnSpan(btns, 3);
-        table.Controls.Add(btns, 3, 1);
+        table.SetColumnSpan(btns, 4);
+        table.Controls.Add(btns, 0, 2);
 
-        var hint = new Label
-        {
-            Text = "步骤：开发者选项 → 无线调试 → 使用配对码配对（填 IP+配对端口+配对码）→ 再填连接端口点「连接」→ 刷新设备。",
-            AutoSize = true,
-            ForeColor = Color.DimGray,
-            Margin = new Padding(0, 6, 0, 0),
-            MaximumSize = new Size(660, 0)
-        };
+        var hint = MakeHint("步骤：开发者选项 → 无线调试 → 使用配对码配对（填 IP+配对端口+配对码）→ 再填连接端口点「连接」→ 刷新设备。");
+        table.SetColumnSpan(hint, 4);
+        table.Controls.Add(hint, 0, 3);
 
-        var stack = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            FlowDirection = FlowDirection.TopDown,
-            AutoSize = true,
-            WrapContents = false
-        };
-        stack.Controls.Add(table);
-        stack.Controls.Add(hint);
-        group.Controls.Add(stack);
+        group.Controls.Add(table);
         return group;
     }
 
     private Control BuildDeviceGroup()
     {
-        var mid = new GroupBox
-        {
-            Text = "设备与参数",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            Padding = new Padding(8),
-            Margin = new Padding(0, 0, 0, 8)
-        };
+        var mid = MakeGroup("设备与参数");
         var midTable = new TableLayoutPanel
         {
-            Dock = DockStyle.Top,
+            Dock = DockStyle.Fill,
             ColumnCount = 4,
-            RowCount = 3,
+            RowCount = 4,
             AutoSize = true
         };
-        midTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
-        midTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
-        midTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
-        midTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+        midTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        midTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        midTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        midTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        midTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        midTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        midTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        midTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
 
-        midTable.Controls.Add(new Label { Text = "已连接设备", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
-        _cmbDevices.Dock = DockStyle.Fill;
+        midTable.Controls.Add(MakeFieldLabel("已连接设备"), 0, 0);
+        StyleFieldControl(_cmbDevices);
         _cmbDevices.DropDownStyle = ComboBoxStyle.DropDownList;
         midTable.SetColumnSpan(_cmbDevices, 2);
         midTable.Controls.Add(_cmbDevices, 1, 0);
         _btnRefresh.Text = "刷新设备";
-        _btnRefresh.Dock = DockStyle.Fill;
+        StyleFieldControl(_btnRefresh);
         _btnRefresh.Click += async (_, _) => await RefreshDevicesAsync();
         midTable.Controls.Add(_btnRefresh, 3, 0);
 
-        midTable.Controls.Add(new Label { Text = "分辨率", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
-        _txtResolution.Dock = DockStyle.Fill;
+        midTable.Controls.Add(MakeFieldLabel("分辨率"), 0, 1);
+        StyleFieldControl(_txtResolution);
         midTable.Controls.Add(_txtResolution, 1, 1);
-        midTable.Controls.Add(new Label { Text = "DPI", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 1);
-        _txtDpi.Dock = DockStyle.Fill;
+        midTable.Controls.Add(MakeFieldLabel("DPI"), 2, 1);
+        StyleFieldControl(_txtDpi);
         midTable.Controls.Add(_txtDpi, 3, 1);
 
-        midTable.Controls.Add(new Label { Text = "码率", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
-        _txtBitrate.Dock = DockStyle.Fill;
+        midTable.Controls.Add(MakeFieldLabel("码率"), 0, 2);
+        StyleFieldControl(_txtBitrate);
         midTable.Controls.Add(_txtBitrate, 1, 2);
-        midTable.Controls.Add(new Label { Text = "帧率 FPS", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 2);
-        _txtFps.Dock = DockStyle.Fill;
+        midTable.Controls.Add(MakeFieldLabel("帧率 FPS"), 2, 2);
+        StyleFieldControl(_txtFps);
         midTable.Controls.Add(_txtFps, 3, 2);
 
-        var modeRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            ColumnCount = 2,
-            AutoSize = true,
-            Margin = new Padding(0, 8, 0, 0)
-        };
-        modeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
-        modeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        modeRow.Controls.Add(new Label { Text = "启动方式", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        midTable.Controls.Add(MakeFieldLabel("启动方式"), 0, 3);
+        StyleFieldControl(_cmbMode);
         _cmbMode.DropDownStyle = ComboBoxStyle.DropDownList;
-        _cmbMode.Dock = DockStyle.Fill;
+        _cmbMode.DropDownWidth = 560;
         _cmbMode.Items.AddRange(new object[]
         {
             "新建虚拟显示（推荐 One UI 8+：scrcpy --new-display）",
             "附着已有 DeX 显示（dumpsys 找 display-id）"
         });
-        modeRow.Controls.Add(_cmbMode, 1, 0);
+        midTable.SetColumnSpan(_cmbMode, 3);
+        midTable.Controls.Add(_cmbMode, 1, 3);
 
-        var midStack = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            FlowDirection = FlowDirection.TopDown,
-            AutoSize = true,
-            WrapContents = false
-        };
-        midStack.Controls.Add(midTable);
-        midStack.Controls.Add(modeRow);
-        mid.Controls.Add(midStack);
+        mid.Controls.Add(midTable);
         return mid;
     }
 
     private Control BuildInputGroup()
     {
-        var group = new GroupBox
-        {
-            Text = "键盘与鼠标（DeX 输入）",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            Padding = new Padding(8),
-            Margin = new Padding(0, 0, 0, 8)
-        };
+        var group = MakeGroup("键盘与鼠标（DeX 输入）");
 
         var table = new TableLayoutPanel
         {
-            Dock = DockStyle.Top,
+            Dock = DockStyle.Fill,
             ColumnCount = 4,
-            RowCount = 3,
+            RowCount = 4,
             AutoSize = true
         };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // keyboard/mouse
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 36)); // SDK options
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48)); // sensitivity dedicated row
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // hint
 
-        table.Controls.Add(new Label { Text = "键盘模式", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 0);
+        table.Controls.Add(MakeFieldLabel("键盘模式"), 0, 0);
+        StyleFieldControl(_cmbKeyboard);
         _cmbKeyboard.DropDownStyle = ComboBoxStyle.DropDownList;
-        _cmbKeyboard.Dock = DockStyle.Fill;
+        _cmbKeyboard.DropDownWidth = 360;
         _cmbKeyboard.Items.AddRange(new object[]
         {
             "uhid（推荐，无线/USB，全字符）",
@@ -417,9 +408,10 @@ public sealed class MainForm : Form
         _cmbKeyboard.SelectedIndexChanged += (_, _) => UpdateKeyboardOptionEnabled();
         table.Controls.Add(_cmbKeyboard, 1, 0);
 
-        table.Controls.Add(new Label { Text = "鼠标模式", AutoSize = true, Anchor = AnchorStyles.Left }, 2, 0);
+        table.Controls.Add(MakeFieldLabel("鼠标模式"), 2, 0);
+        StyleFieldControl(_cmbMouse);
         _cmbMouse.DropDownStyle = ComboBoxStyle.DropDownList;
-        _cmbMouse.Dock = DockStyle.Fill;
+        _cmbMouse.DropDownWidth = 220;
         _cmbMouse.Items.AddRange(new object[]
         {
             "uhid（推荐）",
@@ -428,39 +420,56 @@ public sealed class MainForm : Form
         });
         table.Controls.Add(_cmbMouse, 3, 0);
 
+        table.Controls.Add(MakeFieldLabel("SDK 选项"), 0, 1);
         var sdkOpts = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             AutoSize = true,
-            WrapContents = true
+            WrapContents = true,
+            Margin = new Padding(0, 4, 0, 0)
         };
-        _chkRawKeys.Text = "原始按键 (--raw-key-events)";
+        _chkRawKeys.Text = "原始按键";
         _chkRawKeys.AutoSize = true;
-        _chkPreferText.Text = "优先文本 (--prefer-text)";
+        _chkRawKeys.Margin = new Padding(0, 4, 12, 0);
+        _toolTip.SetToolTip(_chkRawKeys, "对应 scrcpy --raw-key-events（仅 SDK 键盘模式）");
+        _chkPreferText.Text = "优先文本";
         _chkPreferText.AutoSize = true;
-        _chkNoKeyRepeat.Text = "禁用按键重复 (--no-key-repeat)";
+        _chkPreferText.Margin = new Padding(0, 4, 12, 0);
+        _toolTip.SetToolTip(_chkPreferText, "对应 scrcpy --prefer-text（仅 SDK 键盘模式）");
+        _chkNoKeyRepeat.Text = "禁用按键重复";
         _chkNoKeyRepeat.AutoSize = true;
+        _chkNoKeyRepeat.Margin = new Padding(0, 4, 8, 0);
+        _toolTip.SetToolTip(_chkNoKeyRepeat, "对应 scrcpy --no-key-repeat");
         sdkOpts.Controls.Add(_chkRawKeys);
         sdkOpts.Controls.Add(_chkPreferText);
         sdkOpts.Controls.Add(_chkNoKeyRepeat);
         table.SetColumnSpan(sdkOpts, 3);
-        table.Controls.Add(new Label { Text = "SDK 选项", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
         table.Controls.Add(sdkOpts, 1, 1);
 
-        table.Controls.Add(new Label { Text = "鼠标灵敏度", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 2);
-        var sensPanel = new FlowLayoutPanel
+        table.Controls.Add(MakeFieldLabel("鼠标灵敏度"), 0, 2);
+        var sensPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
+            ColumnCount = 6,
+            RowCount = 1,
             AutoSize = true,
-            WrapContents = true
+            Margin = new Padding(0, 2, 0, 2)
         };
+        sensPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180)); // trackbar
+        sensPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));  // value label
+        sensPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));  // 慢
+        sensPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56));  // 标准
+        sensPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));  // 快
+        sensPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));  // checkbox
+        sensPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+
         _trkSensitivity.Minimum = 1;
         _trkSensitivity.Maximum = 10;
         _trkSensitivity.TickFrequency = 1;
-        _trkSensitivity.Width = 160;
-        _trkSensitivity.Height = 36;
+        _trkSensitivity.Dock = DockStyle.Fill;
+        _trkSensitivity.Margin = new Padding(0, 4, 4, 0);
+        _trkSensitivity.TickStyle = TickStyle.BottomRight;
         _trkSensitivity.ValueChanged += (_, _) =>
         {
             _lblSensitivity.Text = $"{_trkSensitivity.Value}/10";
@@ -468,50 +477,46 @@ public sealed class MainForm : Form
                 ApplySensitivityToDpiField();
         };
         _lblSensitivity.AutoSize = true;
-        _lblSensitivity.Margin = new Padding(4, 10, 8, 0);
+        _lblSensitivity.Anchor = AnchorStyles.Left;
+        _lblSensitivity.Margin = new Padding(0, 12, 4, 0);
+        _btnDpiSlow.Text = "慢";
+        _btnDpiSlow.Width = 44;
+        _btnDpiSlow.Height = 28;
+        _btnDpiSlow.Margin = new Padding(2, 6, 2, 0);
+        _btnDpiSlow.Click += (_, _) => { _trkSensitivity.Value = 2; ApplySensitivityToDpiField(); };
+        _btnDpiNormal.Text = "标准";
+        _btnDpiNormal.Width = 52;
+        _btnDpiNormal.Height = 28;
+        _btnDpiNormal.Margin = new Padding(2, 6, 2, 0);
+        _btnDpiNormal.Click += (_, _) => { _trkSensitivity.Value = 5; ApplySensitivityToDpiField(); };
+        _btnDpiFast.Text = "快";
+        _btnDpiFast.Width = 44;
+        _btnDpiFast.Height = 28;
+        _btnDpiFast.Margin = new Padding(2, 6, 2, 0);
+        _btnDpiFast.Click += (_, _) => { _trkSensitivity.Value = 8; ApplySensitivityToDpiField(); };
         _chkApplySensToDpi.Text = "启动时用灵敏度覆盖 DPI";
         _chkApplySensToDpi.AutoSize = true;
         _chkApplySensToDpi.Checked = true;
-        _chkApplySensToDpi.Margin = new Padding(4, 8, 8, 0);
-        _btnDpiSlow.Text = "慢";
-        _btnDpiSlow.Width = 40;
-        _btnDpiSlow.Click += (_, _) => { _trkSensitivity.Value = 2; ApplySensitivityToDpiField(); };
-        _btnDpiNormal.Text = "标准";
-        _btnDpiNormal.Width = 48;
-        _btnDpiNormal.Click += (_, _) => { _trkSensitivity.Value = 5; ApplySensitivityToDpiField(); };
-        _btnDpiFast.Text = "快";
-        _btnDpiFast.Width = 40;
-        _btnDpiFast.Click += (_, _) => { _trkSensitivity.Value = 8; ApplySensitivityToDpiField(); };
-        sensPanel.Controls.Add(_trkSensitivity);
-        sensPanel.Controls.Add(_lblSensitivity);
-        sensPanel.Controls.Add(_chkApplySensToDpi);
-        sensPanel.Controls.Add(_btnDpiSlow);
-        sensPanel.Controls.Add(_btnDpiNormal);
-        sensPanel.Controls.Add(_btnDpiFast);
+        _chkApplySensToDpi.Anchor = AnchorStyles.Left;
+        _chkApplySensToDpi.Margin = new Padding(8, 10, 0, 0);
+
+        sensPanel.Controls.Add(_trkSensitivity, 0, 0);
+        sensPanel.Controls.Add(_lblSensitivity, 1, 0);
+        sensPanel.Controls.Add(_btnDpiSlow, 2, 0);
+        sensPanel.Controls.Add(_btnDpiNormal, 3, 0);
+        sensPanel.Controls.Add(_btnDpiFast, 4, 0);
+        sensPanel.Controls.Add(_chkApplySensToDpi, 5, 0);
         table.SetColumnSpan(sensPanel, 3);
         table.Controls.Add(sensPanel, 1, 2);
 
-        var hint = new Label
-        {
-            Text = "说明：scrcpy 无独立鼠标灵敏度参数。默认 --mouse=uhid / --keyboard=uhid；灵敏度通过 DPI 预设近似。" +
-                   "UHID 失败时可改 aoa（USB）或 sdk。首次 UHID 请在 scrcpy 窗口按 MOD+k 配置实体键盘布局。" +
-                   "Windows 指针速度也可在「设置 → 蓝牙和其他设备 → 鼠标」中调节。",
-            AutoSize = true,
-            ForeColor = Color.DimGray,
-            Margin = new Padding(0, 6, 0, 0),
-            MaximumSize = new Size(660, 0)
-        };
+        var hint = MakeHint(
+            "说明：scrcpy 无独立鼠标灵敏度参数。默认 --mouse=uhid / --keyboard=uhid；灵敏度通过 DPI 预设近似。" +
+            "UHID 失败时可改 aoa（USB）或 sdk。首次 UHID 请在 scrcpy 窗口按 MOD+k 配置实体键盘布局。" +
+            "Windows 指针速度也可在「设置 → 蓝牙和其他设备 → 鼠标」中调节。");
+        table.SetColumnSpan(hint, 4);
+        table.Controls.Add(hint, 0, 3);
 
-        var stack = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            FlowDirection = FlowDirection.TopDown,
-            AutoSize = true,
-            WrapContents = false
-        };
-        stack.Controls.Add(table);
-        stack.Controls.Add(hint);
-        group.Controls.Add(stack);
+        group.Controls.Add(table);
         return group;
     }
 
